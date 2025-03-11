@@ -1,83 +1,56 @@
-### **✅ Fix Windows Not Showing in GRUB on VX Linux**
-Since Windows is missing from GRUB, follow these steps to **restore it**.
+### **🔍 Windows Not Detected by `os-prober` - Next Steps**
+Your screenshot shows that **`os-prober` ran but didn't detect Windows**. Let's manually fix it.
 
 ---
 
-## **🛠 Step 1: Ensure `os-prober` Is Installed**
-First, check if `os-prober` is installed:
-```bash
-xbps-query -Rs os-prober
-```
-If it’s not installed, install it:
-```bash
-sudo xbps-install -S os-prober
-```
-
-Now, enable Windows detection inside GRUB:
-```bash
-echo 'GRUB_DISABLE_OS_PROBER=false' | sudo tee -a /etc/default/grub
-```
-
----
-
-## **🛠 Step 2: Detect Windows Bootloader**
+## **✅ Step 1: Check If Windows EFI Bootloader Exists**
 Run:
 ```bash
-sudo os-prober
+ls /boot/efi/EFI/
 ```
-If it detects Windows, you’ll see an output like:
+Expected output:
 ```
-/dev/nvme0n1p3:Windows 10:Windows:chain
+BOOT  Linux  Microsoft
 ```
-Now, update GRUB:
+If `Microsoft` is missing, Windows Boot Manager might be corrupted.
+
+Check the bootloader file:
 ```bash
-sudo grub-mkconfig -o /boot/grub/grub.cfg
+ls /boot/efi/EFI/Microsoft/Boot/bootmgfw.efi
 ```
-Reboot and check if Windows appears:
-```bash
-reboot
-```
+If the file exists, Windows is installed, and we can **manually add it to GRUB**.
 
 ---
 
-## **🛠 Step 3: Manually Add Windows to GRUB (If Needed)**
-If `os-prober` does not detect Windows, **manually add it**.
+## **✅ Step 2: Manually Add Windows to GRUB**
+Since `os-prober` isn’t working, we must **manually add Windows**.
 
-1. **Find the Windows Bootloader**
+1. **Find the EFI partition UUID**:
    ```bash
-   ls /boot/efi/EFI/
+   blkid /dev/nvme0n1p1
    ```
-   If Windows is installed, you should see:
+   Output will look like:
    ```
-   Microsoft
+   /dev/nvme0n1p1: UUID="XXXX-XXXX" TYPE="vfat"
    ```
-   Check for the bootloader file:
-   ```bash
-   ls /boot/efi/EFI/Microsoft/Boot/bootmgfw.efi
-   ```
-   If this file exists, we can manually add it to GRUB.
+   Copy the **UUID** (e.g., `XXXX-XXXX`).
 
-2. **Manually Add Windows to GRUB**
-   Open the GRUB configuration file:
+2. **Edit the GRUB configuration file**:
    ```bash
    sudo nano /etc/grub.d/40_custom
    ```
-   Add the following at the bottom:
+   Add this at the bottom:
    ```
    menuentry "Windows 10" {
        insmod part_gpt
        insmod fat
-       search --no-floppy --fs-uuid --set=root <EFI-UUID>
+       search --no-floppy --fs-uuid --set=root XXXX-XXXX
        chainloader /EFI/Microsoft/Boot/bootmgfw.efi
    }
    ```
-   - Replace `<EFI-UUID>` with the **UUID** of `/dev/nvme0n1p1`. Get it using:
-     ```bash
-     blkid /dev/nvme0n1p1
-     ```
-   - Copy the **UUID** from the output and replace `<EFI-UUID>` in the script.
+   Replace `XXXX-XXXX` with your **EFI partition UUID**.
 
-3. **Save and Exit (`Ctrl + X`, then `Y`, then `Enter`)**.
+3. **Save and exit** (`Ctrl + X`, then `Y`, then `Enter`).
 
 4. **Update GRUB**:
    ```bash
@@ -91,30 +64,31 @@ If `os-prober` does not detect Windows, **manually add it**.
 
 ---
 
-## **🛠 Step 4: Boot Windows Using `efibootmgr` (If GRUB Fails)**
-If GRUB still doesn’t detect Windows, you can **manually boot into Windows**:
+## **✅ Step 3: Boot Windows Using `efibootmgr` (Alternative)**
+If Windows **still doesn’t appear**, try booting manually.
 
-1. **Find the Windows Boot Entry**:
+1. **Check available boot entries**:
    ```bash
    sudo efibootmgr
    ```
-   Look for a line like:
+   Example output:
    ```
+   Boot0000* Linux
    Boot0001* Windows Boot Manager
    ```
-   If found, boot into Windows manually:
+   If Windows Boot Manager exists, set it as the next boot:
    ```bash
    sudo efibootmgr --bootnext 0001
    reboot
    ```
-   (Replace `0001` with the actual **Boot ID** for Windows.)
+   *(Replace `0001` with the actual Boot ID for Windows.)*
 
 ---
 
 ### **🎯 Final Summary**
-✔ **Check if `os-prober` is installed and enable it (`GRUB_DISABLE_OS_PROBER=false`)**  
-✔ **Run `os-prober` and `grub-mkconfig` to detect Windows automatically**  
-✔ **If Windows is missing, manually add it to `/etc/grub.d/40_custom`**  
-✔ **Use `efibootmgr` to manually boot Windows if GRUB still doesn’t work**  
+✔ **Check if Windows EFI bootloader exists (`ls /boot/efi/EFI/Microsoft/Boot/bootmgfw.efi`)**.  
+✔ **Manually add Windows to GRUB (`/etc/grub.d/40_custom`)**.  
+✔ **Use `efibootmgr` to boot into Windows manually**.  
+✔ **Update GRUB (`grub-mkconfig`) and reboot**.  
 
-Try these steps and let me know if you need more help! 🚀
+Try these steps and let me know what happens! 🚀
