@@ -1,82 +1,79 @@
-### **⚠ Windows Bootloader Is Missing - Recovery Needed**
-Your screenshot confirms:
-1. **The EFI partition (`/dev/nvme0n1p1`) is mounted**.
-2. **Only `void_grub` exists, but `Microsoft` is missing**.
-3. **Windows (`/dev/nvme0n1p3`) still exists, but it cannot boot without its EFI entry**.
+Since Windows is booting manually from your UEFI boot menu but not appearing in GRUB, you likely need to properly detect and add the Windows Boot Manager entry to GRUB. Follow these steps:
 
-This means that the **Windows Boot Manager has been deleted or overwritten**, and you must restore it.
-
----
-
-## **✅ Step 1: Manually Check for Windows Bootloader**
+### **1️⃣ Ensure `os-prober` is Enabled**
 Run:
-```bash
-ls /mnt/EFI/
+```sh
+echo 'GRUB_DISABLE_OS_PROBER=false' | sudo tee -a /etc/default/grub
 ```
-Expected output:
+Then update GRUB:
+```sh
+sudo update-grub
 ```
-BOOT  Microsoft  void_grub
+or on Void Linux:
+```sh
+sudo xbps-reconfigure -f grub
 ```
-Since `Microsoft` is missing, let's check if Windows still has its bootloader elsewhere:
-```bash
-find / -name "bootmgfw.efi" 2>/dev/null
-```
-If the file exists somewhere, we can restore it. If not, we must **reinstall the Windows bootloader**.
 
----
-
-## **✅ Step 2: Restore Windows Boot Manager from a Windows USB**
-If `bootmgfw.efi` is missing, you need a **Windows installation USB** to fix it.
-
-### **1️⃣ Boot into Windows Recovery Mode**
-1. **Insert a Windows USB drive** and boot from it.
-2. Select **Repair your computer** → **Troubleshoot** → **Command Prompt**.
-
-### **2️⃣ Rebuild the Windows Boot Manager**
-Run the following commands:
-```cmd
-diskpart
-list disk
-select disk 0
-list partition
-select partition 1   (Replace 1 with your EFI partition)
-assign letter=S
-exit
-bcdboot C:\Windows /s S: /f UEFI
-```
-This will **reinstall Windows Boot Manager** onto your EFI partition.
-
-### **3️⃣ Reboot into Linux and Update GRUB**
-After restoring the Windows Boot Manager, boot into **Linux** and run:
-```bash
+### **2️⃣ Check for Windows Boot Manager**
+Run:
+```sh
 sudo os-prober
+```
+It should detect Windows and output something like:
+```
+/dev/nvme0n1p3:Windows Boot Manager:Windows:efi
+```
+If it does, run:
+```sh
+sudo update-grub
+```
+or
+```sh
 sudo grub-mkconfig -o /boot/grub/grub.cfg
 ```
-Then **reboot** and check if Windows appears in the GRUB menu.
 
----
+### **3️⃣ Manually Add Windows Boot Entry (If Needed)**
+If `os-prober` doesn’t detect Windows, create a manual GRUB entry.
 
-## **🛠 Alternative: Boot Windows Without GRUB**
-If you **can't restore the bootloader**, you can try booting Windows manually:
+Run:
+```sh
+sudo nano /etc/grub.d/40_custom
+```
+Add the following:
+```sh
+menuentry "Windows 11" {
+    insmod part_gpt
+    insmod fat
+    search --no-floppy --set=root --fs-uuid <UUID of Windows EFI partition>
+    chainloader /EFI/Microsoft/Boot/bootmgfw.efi
+}
+```
+Find your Windows EFI partition UUID with:
+```sh
+lsblk -o NAME,FSTYPE,UUID | grep vfat
+```
+Replace `<UUID of Windows EFI partition>` in the script.
 
-1. **Check available boot entries**:
-   ```bash
-   sudo efibootmgr
-   ```
-   If Windows Boot Manager exists, boot into it manually:
-   ```bash
-   sudo efibootmgr --bootnext 0001
-   reboot
-   ```
-   *(Replace `0001` with the actual Boot ID for Windows.)*
+Save and exit, then update GRUB:
+```sh
+sudo update-grub
+```
 
----
+### **4️⃣ Verify UEFI Boot Order**
+Run:
+```sh
+sudo efibootmgr
+```
+If GRUB is set as default but doesn’t detect Windows, you may need to manually add it using:
+```sh
+sudo efibootmgr --create --disk /dev/nvme0n1 --part 1 --label "Windows Boot Manager" --loader "\EFI\Microsoft\Boot\bootmgfw.efi"
+```
+Adjust the disk (`/dev/nvme0n1`) and partition (`--part 1`) accordingly.
 
-## **🎯 Final Summary**
-✔ **Check if `Microsoft` exists on EFI (`ls /mnt/EFI/`)**  
-✔ **Look for `bootmgfw.efi` (`find / -name "bootmgfw.efi"`)**  
-✔ **Use a Windows USB to restore Boot Manager (`bcdboot C:\Windows /s S: /f UEFI`)**  
-✔ **Reinstall GRUB (`os-prober` + `grub-mkconfig`)**  
-✔ **Use `efibootmgr` to boot Windows manually if needed**  
+### **5️⃣ Restart & Test**
+Reboot and check if Windows appears in GRUB:
+```sh
+sudo reboot
+```
 
-Try these steps and let me know what happens! 🚀
+If Windows still doesn’t show up, let me know what happens after each step.
