@@ -1,95 +1,82 @@
-### **✅ Windows EFI Partition Exists - Next Steps**
-Your `fdisk -l` output confirms that your **Windows EFI partition exists** (`/dev/nvme0n1p1` at 260MB), but **it's not being detected by GRUB**. Let's fix that!
+### **⚠ Windows Bootloader Is Missing - Recovery Needed**
+Your screenshot confirms:
+1. **The EFI partition (`/dev/nvme0n1p1`) is mounted**.
+2. **Only `void_grub` exists, but `Microsoft` is missing**.
+3. **Windows (`/dev/nvme0n1p3`) still exists, but it cannot boot without its EFI entry**.
+
+This means that the **Windows Boot Manager has been deleted or overwritten**, and you must restore it.
 
 ---
 
-## **🛠 Step 1: Manually Mount the Windows EFI Partition**
-Try mounting the EFI partition and check its contents:
+## **✅ Step 1: Manually Check for Windows Bootloader**
+Run:
 ```bash
-sudo mount /dev/nvme0n1p1 /mnt
 ls /mnt/EFI/
 ```
 Expected output:
 ```
 BOOT  Microsoft  void_grub
 ```
-If **Microsoft is missing**, the Windows Boot Manager needs to be restored.
+Since `Microsoft` is missing, let's check if Windows still has its bootloader elsewhere:
+```bash
+find / -name "bootmgfw.efi" 2>/dev/null
+```
+If the file exists somewhere, we can restore it. If not, we must **reinstall the Windows bootloader**.
 
 ---
 
-## **🛠 Step 2: Manually Add Windows to GRUB**
-If `os-prober` doesn’t detect Windows, **manually add it**.
+## **✅ Step 2: Restore Windows Boot Manager from a Windows USB**
+If `bootmgfw.efi` is missing, you need a **Windows installation USB** to fix it.
 
-1. **Find the EFI partition UUID**:
+### **1️⃣ Boot into Windows Recovery Mode**
+1. **Insert a Windows USB drive** and boot from it.
+2. Select **Repair your computer** → **Troubleshoot** → **Command Prompt**.
+
+### **2️⃣ Rebuild the Windows Boot Manager**
+Run the following commands:
+```cmd
+diskpart
+list disk
+select disk 0
+list partition
+select partition 1   (Replace 1 with your EFI partition)
+assign letter=S
+exit
+bcdboot C:\Windows /s S: /f UEFI
+```
+This will **reinstall Windows Boot Manager** onto your EFI partition.
+
+### **3️⃣ Reboot into Linux and Update GRUB**
+After restoring the Windows Boot Manager, boot into **Linux** and run:
+```bash
+sudo os-prober
+sudo grub-mkconfig -o /boot/grub/grub.cfg
+```
+Then **reboot** and check if Windows appears in the GRUB menu.
+
+---
+
+## **🛠 Alternative: Boot Windows Without GRUB**
+If you **can't restore the bootloader**, you can try booting Windows manually:
+
+1. **Check available boot entries**:
    ```bash
-   blkid /dev/nvme0n1p1
+   sudo efibootmgr
    ```
-   Example output:
-   ```
-   /dev/nvme0n1p1: UUID="XXXX-XXXX" TYPE="vfat"
-   ```
-   Copy the **UUID**.
-
-2. **Edit the GRUB configuration file**:
+   If Windows Boot Manager exists, boot into it manually:
    ```bash
-   sudo nano /etc/grub.d/40_custom
-   ```
-   Add this entry at the bottom:
-   ```
-   menuentry "Windows 10" {
-       insmod part_gpt
-       insmod fat
-       search --no-floppy --fs-uuid --set=root XXXX-XXXX
-       chainloader /EFI/Microsoft/Boot/bootmgfw.efi
-   }
-   ```
-   Replace `XXXX-XXXX` with your **EFI partition UUID**.
-
-3. **Save and exit** (`Ctrl + X`, then `Y`, then `Enter`).
-
-4. **Update GRUB**:
-   ```bash
-   sudo grub-mkconfig -o /boot/grub/grub.cfg
-   ```
-
-5. **Reboot and check if Windows appears**:
-   ```bash
+   sudo efibootmgr --bootnext 0001
    reboot
    ```
-
----
-
-## **🛠 Step 3: Restore Windows Boot Manager (If It’s Missing)**
-If `/mnt/EFI/Microsoft/Boot/bootmgfw.efi` does not exist, restore it using a **Windows USB drive**:
-
-1. **Boot from a Windows USB**.
-2. Select **Repair your computer** → **Troubleshoot** → **Command Prompt**.
-3. Run:
-   ```cmd
-   diskpart
-   list disk
-   select disk 0
-   list partition
-   select partition 1  (Replace with your EFI partition)
-   assign letter=S
-   exit
-   ```
-4. Restore the Windows bootloader:
-   ```cmd
-   bcdboot C:\Windows /s S: /f UEFI
-   ```
-5. **Reboot into Linux** and update GRUB:
-   ```bash
-   sudo os-prober
-   sudo grub-mkconfig -o /boot/grub/grub.cfg
-   ```
+   *(Replace `0001` with the actual Boot ID for Windows.)*
 
 ---
 
 ## **🎯 Final Summary**
-✔ **Mount the EFI partition (`mount /dev/nvme0n1p1 /mnt`)**  
-✔ **Check if Windows Boot Manager exists (`ls /mnt/EFI/Microsoft/Boot/bootmgfw.efi`)**  
-✔ **Manually add Windows to GRUB (`/etc/grub.d/40_custom`)**  
-✔ **Use a Windows USB to restore the Boot Manager if missing (`bcdboot C:\Windows /s S: /f UEFI`)**  
+✔ **Check if `Microsoft` exists on EFI (`ls /mnt/EFI/`)**  
+✔ **Look for `bootmgfw.efi` (`find / -name "bootmgfw.efi"`)**  
+✔ **Use a Windows USB to restore Boot Manager (`bcdboot C:\Windows /s S: /f UEFI`)**  
+✔ **Reinstall GRUB (`os-prober` + `grub-mkconfig`)**  
+✔ **Use `efibootmgr` to boot Windows manually if needed**  
 
-Try these steps and let me know if you need further help! 🚀
+Try these steps and let me know what happens! 🚀
